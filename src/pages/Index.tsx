@@ -2,41 +2,38 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LeadsTable } from "@/components/leads/LeadsTable";
 import { LeadActions } from "@/components/leads/LeadActions";
-import { Lead, LeadType } from "@/types/lead";
-import { mockLeads } from "@/data/mockLeads";
-import { Mail, Share2 } from "lucide-react";
+import { LeadType } from "@/types/lead";
+import { useLeads } from "@/hooks/useLeads";
+import { useMessageLeads } from "@/hooks/useMessageLeads";
+import { Mail, Share2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<LeadType | "all">("all");
   const { toast } = useToast();
+  
+  const { data: leads = [], isLoading, error } = useLeads();
+  const messageLeadsMutation = useMessageLeads();
 
-  const filteredLeads = mockLeads.filter(lead => 
+  const filteredLeads = leads.filter(lead => 
     activeTab === "all" ? true : lead.type === activeTab
   );
 
   const handleMessageSelected = async () => {
-    const selectedLeads = mockLeads.filter(lead => selectedIds.has(lead.id));
-    
     toast({
       title: "Messaging leads...",
-      description: `Sending messages to ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'}`,
+      description: `Sending messages to ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}`,
     });
 
     try {
-      // This is where you would make the API call to your endpoint
-      // Example: await fetch('https://api.musi-nova.com/message', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ leadIds: Array.from(selectedIds) })
-      // });
-      
-      console.log("Messaging leads:", selectedLeads);
+      await messageLeadsMutation.mutateAsync({
+        lead_ids: Array.from(selectedIds),
+      });
       
       toast({
         title: "Messages sent!",
-        description: `Successfully sent messages to ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'}`,
+        description: `Successfully sent messages to ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}`,
       });
       
       setSelectedIds(new Set());
@@ -48,6 +45,28 @@ const Index = () => {
       });
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Loading leads...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-destructive mb-2">Failed to load leads</p>
+          <p className="text-sm text-muted-foreground">Please check your API configuration</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,7 +80,7 @@ const Index = () => {
               </p>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{mockLeads.length}</span> total leads
+              <span className="font-medium text-foreground">{leads.length}</span> total leads
             </div>
           </div>
         </div>
