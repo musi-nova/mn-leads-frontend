@@ -9,7 +9,7 @@ import { LeadsTable } from "@/components/leads/LeadsTable";
 import { LeadsStats } from "@/components/leads/LeadsStats";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { LeadType } from "@/types/lead";
-import { useLeads, useCreateEmailLead, useCreateSocialLead, useDeleteLead, useUpdateEmailLead, useUpdateSocialLead } from "@/hooks/useLeads";
+import { useLeads, useCreateEmailLead, useCreateSocialLead, useDeleteLead, useUpdateEmailLead, useUpdateSocialLead, useAutoDmSocialLeads, useAutoDmEmailLeads } from "@/hooks/useLeads";
 import { useMessageLeads } from "@/hooks/useMessageLeads";
 import { Mail, Share2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -99,25 +99,42 @@ const Index = () => {
   const { toast } = useToast();
   const { data: leads = [], isLoading, error } = useLeads();
   const messageLeadsMutation = useMessageLeads();
+  const autoDmSocialLeadsMutation = useAutoDmSocialLeads();
+  const autoDmEmailLeadsMutation = useAutoDmEmailLeads();
   const filteredLeads = leads.filter(lead =>
     activeTab === "all" ? true : lead.type === activeTab
   );
   const handleMessageSelected = async () => {
+    if (activeTab === "all") {
+      toast({
+        title: "Error",
+        description: "Please select the Email or Social tab before messaging leads.",
+        variant: "destructive",
+      });
+      return;
+    }
     toast({
       title: "Messaging leads...",
       description: `Sending messages to ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}`,
     });
 
+    const selectedLeads = leads.filter(lead => selectedIds.has(lead.id));
+    const allSocial = selectedLeads.length > 0 && selectedLeads.every(lead => lead.type === "social");
+    const allEmail = selectedLeads.length > 0 && selectedLeads.every(lead => lead.type === "email");
     try {
-      await messageLeadsMutation.mutateAsync({
-        lead_ids: Array.from(selectedIds),
-      });
-
+      if (allSocial) {
+        await autoDmSocialLeadsMutation.mutateAsync(selectedLeads.map(lead => lead.id));
+      } else if (allEmail) {
+        await autoDmEmailLeadsMutation.mutateAsync(selectedLeads.map(lead => lead.id));
+      } else {
+        await messageLeadsMutation.mutateAsync({
+          lead_ids: Array.from(selectedIds),
+        });
+      }
       toast({
         title: "Messages sent!",
         description: `Successfully sent messages to ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}`,
       });
-
       setSelectedIds(new Set());
     } catch (error) {
       toast({
@@ -351,7 +368,7 @@ const Index = () => {
                 if (activeTab === 'email') {
                   filtered = filtered.filter(l => l.type === 'email');
                 } else if (activeTab === 'social') {
-                  filtered = filtered.filter(l => l.type === 'social');
+                  filtered = filtered.filter(l => l.type === 'social' && l.instagram_handle && l.spotify_handle);
                 }
                 if (filtered.length === 0) return;
                 const count = Math.max(1, Math.min(selectedRandomCount, Math.min(300, filtered.length)));

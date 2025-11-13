@@ -132,3 +132,26 @@ export const useDeleteLead = () => {
     },
   });
 };
+
+
+export const useAutoDmSocialLeads = () => {
+  return useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      return fetchWithAuth(`${API_BASE_URL}/leads/social/auto-dm`, {
+        method: "POST",
+        body: JSON.stringify(leadIds),
+      });
+    },
+  });
+};
+
+export const useAutoDmEmailLeads = () => {
+  return useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      return fetchWithAuth(`${API_BASE_URL}/leads/email/auto-dm`, {
+        method: "POST",
+        body: JSON.stringify(leadIds),
+      });
+    },
+  });
+};
