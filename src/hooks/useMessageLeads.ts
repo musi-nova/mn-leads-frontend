@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 
-const API_BASE_URL = "https://api.musi-nova.com";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 // TODO: Replace with your actual API key or auth token
 const API_KEY = "your-api-key-here";
@@ -13,7 +13,7 @@ interface MessageLeadsPayload {
 export const useMessageLeads = () => {
   return useMutation({
     mutationFn: async (payload: MessageLeadsPayload) => {
-      const response = await fetch(`${API_BASE_URL}/message-leads`, {
+      const response = await fetch(`${API_BASE_URL}/leads/social`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

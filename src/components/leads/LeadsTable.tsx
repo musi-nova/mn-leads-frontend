@@ -73,10 +73,12 @@ export const LeadsTable = ({ leads, selectedIds, onSelectionChange }: LeadsTable
               />
             </TableHead>
             <TableHead>Name</TableHead>
+            <TableHead>Date Sent</TableHead>
             <TableHead>Contact</TableHead>
             <TableHead>Template Used</TableHead>
             <TableHead>Notes</TableHead>
             <TableHead>Created</TableHead>
+            <TableHead>Updated</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -103,6 +105,9 @@ export const LeadsTable = ({ leads, selectedIds, onSelectionChange }: LeadsTable
                 <TableCell className="font-medium">
                   {lead.type === 'email' ? (lead.name || '—') : lead.name}
                 </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {lead.date_sent ? formatDistanceToNow(new Date(lead.date_sent), { addSuffix: true }) : '—'}
+                </TableCell>
                 <TableCell>
                   {lead.type === 'email' ? (
                     <div className="flex items-center gap-2">
@@ -121,6 +126,9 @@ export const LeadsTable = ({ leads, selectedIds, onSelectionChange }: LeadsTable
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {lead.updated_at ? formatDistanceToNow(new Date(lead.updated_at), { addSuffix: true }) : '—'}
                 </TableCell>
               </TableRow>
             ))

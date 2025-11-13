@@ -1,25 +1,107 @@
 import { useState } from "react";
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LeadsTable } from "@/components/leads/LeadsTable";
+import { LeadsStats } from "@/components/leads/LeadsStats";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { LeadType } from "@/types/lead";
-import { useLeads } from "@/hooks/useLeads";
+import { useLeads, useCreateEmailLead, useCreateSocialLead, useDeleteLead, useUpdateEmailLead, useUpdateSocialLead } from "@/hooks/useLeads";
 import { useMessageLeads } from "@/hooks/useMessageLeads";
 import { Mail, Share2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+
 const Index = () => {
+  const [newLeadType, setNewLeadType] = useState<LeadType>('email');
+  const [form, setForm] = useState<any>({
+    email: '',
+    name: '',
+    template_used: '',
+    notes: '',
+    track_title: '',
+    genre: '',
+    facebook_handle: '',
+    instagram_handle: '',
+    spotify_handle: '',
+  });
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+  const handleLeadTypeChange = (value: LeadType) => {
+    setNewLeadType(value);
+    setForm({ ...form, email: '', name: '', template_used: '', notes: '', track_title: '', genre: '', facebook_handle: '', instagram_handle: '', spotify_handle: '' });
+  };
+  const createEmailLead = useCreateEmailLead();
+  const createSocialLead = useCreateSocialLead();
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formLoading, setFormLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const deleteLeadMutation = useDeleteLead();
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      for (const id of selectedIds) {
+        const lead = leads.find(l => l.id === id);
+        if (lead) {
+          await deleteLeadMutation.mutateAsync({ id: lead.id, type: lead.type });
+        }
+      }
+      toast({ title: 'Deleted', description: `Deleted ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}` });
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      toast({ title: 'Error', description: err?.message || 'Failed to delete leads', variant: 'destructive' });
+    }
+  };
   const [activeTab, setActiveTab] = useState<LeadType | "all">("all");
+  const [openCreateModal, setOpenCreateModal] = useState(false);
+  const [selectedRandomCount, setSelectedRandomCount] = useState(1);
+  const [openUpdateModal, setOpenUpdateModal] = useState(false);
+  const updateEmailLead = useUpdateEmailLead();
+  const updateSocialLead = useUpdateSocialLead();
+  const [updateForm, setUpdateForm] = useState<any>(null);
+  const [updateLoading, setUpdateLoading] = useState(false);
+  // Open update modal and prefill form
+  const handleOpenUpdateModal = () => {
+    if (selectedIds.size !== 1) return;
+    const lead = leads.find(l => l.id === Array.from(selectedIds)[0]);
+    if (!lead) return;
+    setUpdateForm({ ...lead });
+    setOpenUpdateModal(true);
+  };
+
+  const handleUpdateFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUpdateForm({ ...updateForm, [e.target.name]: e.target.value });
+  };
+
+  const handleUpdateLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!updateForm) return;
+    setUpdateLoading(true);
+    try {
+      if (updateForm.type === 'email') {
+        await updateEmailLead.mutateAsync({ id: updateForm.id, data: updateForm });
+      } else {
+        await updateSocialLead.mutateAsync({ id: updateForm.id, data: updateForm });
+      }
+      toast({ title: 'Updated', description: 'Lead updated successfully' });
+      setOpenUpdateModal(false);
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      toast({ title: 'Error', description: err?.message || 'Failed to update lead', variant: 'destructive' });
+    } finally {
+      setUpdateLoading(false);
+    }
+  };
   const { toast } = useToast();
-  
   const { data: leads = [], isLoading, error } = useLeads();
   const messageLeadsMutation = useMessageLeads();
-
-  const filteredLeads = leads.filter(lead => 
+  const filteredLeads = leads.filter(lead =>
     activeTab === "all" ? true : lead.type === activeTab
   );
-
   const handleMessageSelected = async () => {
     toast({
       title: "Messaging leads...",
@@ -30,12 +112,12 @@ const Index = () => {
       await messageLeadsMutation.mutateAsync({
         lead_ids: Array.from(selectedIds),
       });
-      
+
       toast({
         title: "Messages sent!",
         description: `Successfully sent messages to ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}`,
       });
-      
+
       setSelectedIds(new Set());
     } catch (error) {
       toast({
@@ -79,8 +161,145 @@ const Index = () => {
                 Manage and message your email and social media leads
               </p>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{leads.length}</span> total leads
+            <div className="flex items-center gap-4">
+              <span className="font-medium text-foreground">{leads.length}</span> <span className="text-sm text-muted-foreground">total leads</span>
+              <Dialog open={openCreateModal} onOpenChange={setOpenCreateModal}>
+                <DialogTrigger asChild>
+                  <button className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 transition" onClick={() => setOpenCreateModal(true)}>
+                    + Create New Lead
+                  </button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Lead</DialogTitle>
+                    <DialogDescription>
+                      Fill out the form below to add a new lead.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form className="space-y-4" onSubmit={async (e) => {
+                    e.preventDefault();
+                    setFormError(null);
+                    setFormLoading(true);
+                    try {
+                      if (newLeadType === 'email') {
+                        await createEmailLead.mutateAsync({
+                          email: form.email,
+                          name: form.name,
+                          template_used: form.template_used,
+                          notes: form.notes,
+                          track_title: form.track_title,
+                          genre: form.genre,
+                        });
+                      } else {
+                        await createSocialLead.mutateAsync({
+                          name: form.name,
+                          facebook_handle: form.facebook_handle,
+                          instagram_handle: form.instagram_handle,
+                          spotify_handle: form.spotify_handle,
+                          template_used: form.template_used,
+                          notes: form.notes,
+                        });
+                      }
+                      setOpenCreateModal(false);
+                      setForm({ email: '', name: '', template_used: '', notes: '', track_title: '', genre: '', facebook_handle: '', instagram_handle: '', spotify_handle: '' });
+                    } catch (err: any) {
+                      setFormError(err?.message || 'Failed to create lead');
+                    } finally {
+                      setFormLoading(false);
+                    }
+                  }}>
+                    {formError && <div className="text-destructive text-sm">{formError}</div>}
+                    <div>
+                      <Label htmlFor="lead-type">Lead Type</Label>
+                      <Select value={newLeadType} onValueChange={handleLeadTypeChange}>
+                        <SelectTrigger id="lead-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="social">Social</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {newLeadType === 'email' ? (
+                      <>
+                        <div>
+                          <Label htmlFor="email">Email</Label>
+                          <Input id="email" name="email" value={form.email} onChange={handleFormChange} required />
+                        </div>
+                        <div>
+                          <Label htmlFor="name">Name</Label>
+                          <Input id="name" name="name" value={form.name} onChange={handleFormChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="track_title">Track Title</Label>
+                          <Input id="track_title" name="track_title" value={form.track_title} onChange={handleFormChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="genre">Genre</Label>
+                          <Input id="genre" name="genre" value={form.genre} onChange={handleFormChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="template_used">Template Used</Label>
+                          <Input id="template_used" name="template_used" value={form.template_used} onChange={handleFormChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="notes">Notes</Label>
+                          <Input id="notes" name="notes" value={form.notes} onChange={handleFormChange} />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <Label htmlFor="name">Name</Label>
+                          <Input id="name" name="name" value={form.name} onChange={handleFormChange} required />
+                        </div>
+                        <div>
+                          <Label htmlFor="facebook_handle">Facebook Handle</Label>
+                          <Input id="facebook_handle" name="facebook_handle" value={form.facebook_handle} onChange={handleFormChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="instagram_handle">Instagram Handle</Label>
+                          <Input id="instagram_handle" name="instagram_handle" value={form.instagram_handle} onChange={handleFormChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="spotify_handle">Spotify Handle</Label>
+                          <Input id="spotify_handle" name="spotify_handle" value={form.spotify_handle} onChange={handleFormChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="template_used">Template Used</Label>
+                          <Input id="template_used" name="template_used" value={form.template_used} onChange={handleFormChange} />
+                        </div>
+                        <div>
+                          <Label htmlFor="notes">Notes</Label>
+                          <Input id="notes" name="notes" value={form.notes} onChange={handleFormChange} />
+                        </div>
+                      </>
+                    )}
+                    <div className="flex justify-end gap-2 pt-2">
+                      <DialogClose asChild>
+                        <Button type="button" variant="secondary">Cancel</Button>
+                      </DialogClose>
+                      <Button type="submit" disabled={formLoading || createEmailLead.status === 'pending' || createSocialLead.status === 'pending'}>
+                        {formLoading || createEmailLead.status === 'pending' || createSocialLead.status === 'pending' ? 'Saving...' : 'Save Lead'}
+                      </Button>
+                    </div>
+                  </form>
+                  <DialogClose asChild>
+                    <button className="mt-4 px-4 py-2 bg-muted rounded hover:bg-muted/80 transition">Cancel</button>
+                  </DialogClose>
+                </DialogContent>
+              </Dialog>
+              <Button
+                variant="outline"
+                className="ml-2"
+                onClick={() => {
+                  localStorage.removeItem('jwt');
+                  window.location.reload();
+                }}
+              >
+                Logout
+              </Button>
             </div>
           </div>
         </div>
@@ -90,7 +309,8 @@ const Index = () => {
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as LeadType | "all")} className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-3 mb-6">
             <TabsTrigger value="all" className="gap-2">
-              All Leads
+              <Mail className="h-4 w-4" /> / <Share2 className="h-4 w-4" />
+              All
             </TabsTrigger>
             <TabsTrigger value="email" className="gap-2">
               <Mail className="h-4 w-4" />
@@ -101,12 +321,130 @@ const Index = () => {
               Social
             </TabsTrigger>
           </TabsList>
+            <LeadsStats />
 
           <LeadActions
             selectedCount={selectedIds.size}
             onMessageSelected={handleMessageSelected}
             onClearSelection={() => setSelectedIds(new Set())}
+            onDeleteSelected={handleDeleteSelected}
+            deleteLoading={deleteLeadMutation.status === 'pending'}
+            onUpdateSelected={handleOpenUpdateModal}
+            updateLoading={updateLoading}
           />
+          <div className="flex items-center gap-2 mt-4 mb-4">
+            <Input
+              type="number"
+              min={1}
+              max={Math.min(300, leads.filter(l => !l.date_sent).length)}
+              value={selectedRandomCount}
+              onChange={e => setSelectedRandomCount(
+                Math.max(1, Math.min(Number(e.target.value), Math.min(300, leads.filter(l => !l.date_sent).length)))
+              )}
+              style={{ width: 80 }}
+              placeholder="Amount"
+            />
+            <Button
+              variant="outline"
+              onClick={() => {
+                let filtered = leads.filter(l => !l.date_sent);
+                if (activeTab === 'email') {
+                  filtered = filtered.filter(l => l.type === 'email');
+                } else if (activeTab === 'social') {
+                  filtered = filtered.filter(l => l.type === 'social');
+                }
+                if (filtered.length === 0) return;
+                const count = Math.max(1, Math.min(selectedRandomCount, Math.min(300, filtered.length)));
+                const selected = new Set(
+                  filtered
+                    .sort(() => Math.random() - 0.5)
+                    .slice(0, count)
+                    .map(l => l.id)
+                );
+                setSelectedIds(selected);
+              }}
+            >
+              Select Random Unmessaged
+            </Button>
+          </div>
+          {/* Update Lead Modal */}
+          <Dialog open={openUpdateModal} onOpenChange={setOpenUpdateModal}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Update Lead</DialogTitle>
+                <DialogDescription>
+                  Edit the details below and save to update the lead.
+                </DialogDescription>
+              </DialogHeader>
+              {updateForm && (
+                <form className="space-y-4" onSubmit={handleUpdateLead}>
+                  {updateForm.type === 'email' ? (
+                    <>
+                      <div>
+                        <Label htmlFor="email">Email</Label>
+                        <Input id="email" name="email" value={updateForm.email} onChange={handleUpdateFormChange} required />
+                      </div>
+                      <div>
+                        <Label htmlFor="name">Name</Label>
+                        <Input id="name" name="name" value={updateForm.name || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                      <div>
+                        <Label htmlFor="track_title">Track Title</Label>
+                        <Input id="track_title" name="track_title" value={updateForm.track_title || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                      <div>
+                        <Label htmlFor="genre">Genre</Label>
+                        <Input id="genre" name="genre" value={updateForm.genre || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                      <div>
+                        <Label htmlFor="template_used">Template Used</Label>
+                        <Input id="template_used" name="template_used" value={updateForm.template_used || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                      <div>
+                        <Label htmlFor="notes">Notes</Label>
+                        <Input id="notes" name="notes" value={updateForm.notes || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <Label htmlFor="name">Name</Label>
+                        <Input id="name" name="name" value={updateForm.name || ''} onChange={handleUpdateFormChange} required />
+                      </div>
+                      <div>
+                        <Label htmlFor="facebook_handle">Facebook Handle</Label>
+                        <Input id="facebook_handle" name="facebook_handle" value={updateForm.facebook_handle || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                      <div>
+                        <Label htmlFor="instagram_handle">Instagram Handle</Label>
+                        <Input id="instagram_handle" name="instagram_handle" value={updateForm.instagram_handle || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                      <div>
+                        <Label htmlFor="spotify_handle">Spotify Handle</Label>
+                        <Input id="spotify_handle" name="spotify_handle" value={updateForm.spotify_handle || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                      <div>
+                        <Label htmlFor="template_used">Template Used</Label>
+                        <Input id="template_used" name="template_used" value={updateForm.template_used || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                      <div>
+                        <Label htmlFor="notes">Notes</Label>
+                        <Input id="notes" name="notes" value={updateForm.notes || ''} onChange={handleUpdateFormChange} />
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-end gap-2 pt-2">
+                    <DialogClose asChild>
+                      <Button type="button" variant="secondary">Cancel</Button>
+                    </DialogClose>
+                    <Button type="submit" disabled={updateLoading}>
+                      {updateLoading ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </DialogContent>
+          </Dialog>
 
           <TabsContent value="all" className="mt-0">
             <LeadsTable

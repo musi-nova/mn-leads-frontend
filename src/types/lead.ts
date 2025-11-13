@@ -1,4 +1,3 @@
-export type LeadType = 'email' | 'social';
 
 export interface EmailLead {
   id: string;
@@ -9,6 +8,7 @@ export interface EmailLead {
   notes?: string;
   track_title?: string;
   genre?: string;
+  date_sent?: string;
   created_at: string;
   updated_at?: string;
 }
@@ -22,6 +22,7 @@ export interface SocialLead {
   spotify_handle?: string;
   template_used?: string;
   notes?: string;
+  date_sent?: string;
   created_at: string;
   updated_at?: string;
 }
