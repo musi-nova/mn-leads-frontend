@@ -1,3 +1,4 @@
+export type LeadType = 'email' | 'social';
 
 export interface EmailLead {
   id: string;

@@ -22,9 +22,9 @@ const SocialHandles = ({ lead }: { lead: Extract<Lead, { type: 'social' }> }) =>
   if (lead.facebook_handle) handles.push({ icon: Facebook, handle: lead.facebook_handle, platform: 'Facebook' });
   if (lead.instagram_handle) handles.push({ icon: Instagram, handle: lead.instagram_handle, platform: 'Instagram' });
   if (lead.spotify_handle) handles.push({ icon: Music, handle: lead.spotify_handle, platform: 'Spotify' });
-  
+
   if (handles.length === 0) return <span className="text-sm text-muted-foreground">—</span>;
-  
+
   return (
     <div className="flex flex-col gap-1">
       {handles.map(({ icon: Icon, handle, platform }) => (
@@ -76,6 +76,7 @@ export const LeadsTable = ({ leads, selectedIds, onSelectionChange }: LeadsTable
             <TableHead>Date Sent</TableHead>
             <TableHead>Contact</TableHead>
             <TableHead>Template Used</TableHead>
+            <TableHead>Track Title</TableHead>
             <TableHead>Notes</TableHead>
             <TableHead>Created</TableHead>
             <TableHead>Updated</TableHead>
@@ -90,7 +91,7 @@ export const LeadsTable = ({ leads, selectedIds, onSelectionChange }: LeadsTable
             </TableRow>
           ) : (
             leads.map((lead) => (
-              <TableRow 
+              <TableRow
                 key={lead.id}
                 className="hover:bg-muted/30 transition-colors cursor-pointer"
                 onClick={() => toggleLead(lead.id)}
@@ -120,6 +121,9 @@ export const LeadsTable = ({ leads, selectedIds, onSelectionChange }: LeadsTable
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {lead.template_used || '—'}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {lead.type === 'email' ? (lead.track_title || '—') : '—'}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
                   {lead.notes || '—'}

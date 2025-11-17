@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,36 @@ import { useToast } from "@/hooks/use-toast";
 
 
 const Index = () => {
+  // PaginationControls component
+  type PaginationControlsProps = {
+    page: number;
+    pageSize: number;
+    total: number;
+    onPageChange: (p: number) => void;
+  };
+  function PaginationControls({ page, pageSize, total, onPageChange }: PaginationControlsProps) {
+    const totalPages = Math.ceil(total / pageSize);
+    if (totalPages <= 1) return null;
+    return (
+      <div className="flex items-center justify-end gap-2 mt-4">
+        <button
+          className="px-2 py-1 border rounded disabled:opacity-50"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page === 0}
+        >
+          Previous
+        </button>
+        <span>Page {page + 1} of {totalPages}</span>
+        <button
+          className="px-2 py-1 border rounded disabled:opacity-50"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page + 1 >= totalPages}
+        >
+          Next
+        </button>
+      </div>
+    );
+  }
   const [newLeadType, setNewLeadType] = useState<LeadType>('email');
   const [form, setForm] = useState<any>({
     email: '',
@@ -28,6 +58,17 @@ const Index = () => {
     instagram_handle: '',
     spotify_handle: '',
   });
+  // Pagination and search state
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 900);
+    return () => clearTimeout(handler);
+  }, [search]);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -97,13 +138,22 @@ const Index = () => {
     }
   };
   const { toast } = useToast();
-  const { data: leads = [], isLoading, error } = useLeads();
+  const {
+    data: paginatedLeads,
+    isLoading,
+    error
+  } = useLeads({
+    type: activeTab,
+    query: debouncedSearch,
+    limit: pageSize,
+    offset: page * pageSize,
+  });
+  const leads = paginatedLeads?.items || [];
+  const totalLeads = paginatedLeads?.total || 0;
   const messageLeadsMutation = useMessageLeads();
   const autoDmSocialLeadsMutation = useAutoDmSocialLeads();
   const autoDmEmailLeadsMutation = useAutoDmEmailLeads();
-  const filteredLeads = leads.filter(lead =>
-    activeTab === "all" ? true : lead.type === activeTab
-  );
+  // No longer need filteredLeads, leads is already filtered by API
   const handleMessageSelected = async () => {
     if (activeTab === "all") {
       toast({
@@ -179,7 +229,7 @@ const Index = () => {
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <span className="font-medium text-foreground">{leads.length}</span> <span className="text-sm text-muted-foreground">total leads</span>
+              <span className="font-medium text-foreground">{totalLeads}</span> <span className="text-sm text-muted-foreground">total leads</span>
               <Dialog open={openCreateModal} onOpenChange={setOpenCreateModal}>
                 <DialogTrigger asChild>
                   <button className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 transition" onClick={() => setOpenCreateModal(true)}>
@@ -338,7 +388,37 @@ const Index = () => {
               Social
             </TabsTrigger>
           </TabsList>
-            <LeadsStats />
+          <LeadsStats />
+          {/* Search and Pagination Controls */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+            <div className="flex items-center gap-2">
+              <Input
+                type="text"
+                placeholder="Search leads..."
+                value={search}
+                onChange={e => {
+                  setSearch(e.target.value);
+                  setPage(0);
+                }}
+                className="w-64"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={e => {
+                  setPageSize(Number(e.target.value));
+                  setPage(0);
+                }}
+                className="border rounded px-2 py-1"
+              >
+                {[5, 10, 20, 50].map(size => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           <LeadActions
             selectedCount={selectedIds.size}
@@ -378,7 +458,7 @@ const Index = () => {
                     .slice(0, count)
                     .map(l => l.id)
                 );
-                setSelectedIds(selected);
+                setSelectedIds(selected as Set<string>);
               }}
             >
               Select Random Unmessaged
@@ -465,23 +545,41 @@ const Index = () => {
 
           <TabsContent value="all" className="mt-0">
             <LeadsTable
-              leads={filteredLeads}
+              leads={leads}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
+            />
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={totalLeads}
+              onPageChange={setPage}
             />
           </TabsContent>
           <TabsContent value="email" className="mt-0">
             <LeadsTable
-              leads={filteredLeads}
+              leads={leads}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
+            />
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={totalLeads}
+              onPageChange={setPage}
             />
           </TabsContent>
           <TabsContent value="social" className="mt-0">
             <LeadsTable
-              leads={filteredLeads}
+              leads={leads}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
+            />
+            <PaginationControls
+              page={page}
+              pageSize={pageSize}
+              total={totalLeads}
+              onPageChange={setPage}
             />
           </TabsContent>
         </Tabs>

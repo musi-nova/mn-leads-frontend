@@ -15,6 +15,14 @@ const fetchWithAuth = async (url: string, options?: RequestInit) => {
     },
   });
 
+  if (response.status === 401) {
+    // Remove token and redirect to login
+    localStorage.removeItem('jwt');
+    window.location.href = '/login';
+    // Return a never-resolving promise to prevent further code execution
+    return new Promise(() => {});
+  }
+
   if (!response.ok) {
     throw new Error(`API request failed: ${response.statusText}`);
   }
@@ -34,21 +42,57 @@ export const useLeadsStats = () => {
   });
 };
 
-export const useLeads = () => {
+export type PaginatedLeadsResult = {
+  items: Lead[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export const useLeads = ({
+  type = "all",
+  query = "",
+  limit = 10,
+  offset = 0,
+}: {
+  type?: "all" | "email" | "social";
+  query?: string;
+  limit?: number;
+  offset?: number;
+} = {}) => {
   return useQuery({
-    queryKey: ["leads"],
+    queryKey: ["leads", type, query, limit, offset],
     queryFn: async () => {
-      const [emailLeads, socialLeads] = await Promise.all([
-        fetchWithAuth(`${API_BASE_URL}/leads/email`),
-        fetchWithAuth(`${API_BASE_URL}/leads/social`),
-      ]);
+      // Helper to fetch and normalize
+      const fetchLeads = async (endpoint: string, leadType: "email" | "social") => {
+        const params = new URLSearchParams();
+        if (query) params.append("query", query);
+        params.append("limit", String(limit));
+        params.append("offset", String(offset));
+        const res = await fetchWithAuth(`${API_BASE_URL}/leads/${endpoint}?${params.toString()}`);
+        return {
+          ...res,
+          items: res.items.map((lead: any) => ({ ...lead, type: leadType })),
+        };
+      };
 
-      const allLeads: Lead[] = [
-        ...emailLeads.map((lead: any) => ({ ...lead, type: "email" as const })),
-        ...socialLeads.map((lead: any) => ({ ...lead, type: "social" as const })),
-      ];
-
-      return allLeads;
+      if (type === "email") {
+        return fetchLeads("email", "email");
+      } else if (type === "social") {
+        return fetchLeads("social", "social");
+      } else {
+        // Fetch both and merge
+        const [email, social] = await Promise.all([
+          fetchLeads("email", "email"),
+          fetchLeads("social", "social"),
+        ]);
+        return {
+          items: [...email.items, ...social.items],
+          total: email.total + social.total,
+          limit,
+          offset,
+        };
+      }
     },
   });
 };
