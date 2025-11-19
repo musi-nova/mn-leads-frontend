@@ -54,14 +54,18 @@ export const useLeads = ({
   query = "",
   limit = 10,
   offset = 0,
+  sort = 'asc',
+  only_unmessaged = true,
 }: {
   type?: "all" | "email" | "social";
   query?: string;
   limit?: number;
   offset?: number;
+  sort?: 'asc' | 'desc';
+  only_unmessaged?: boolean;
 } = {}) => {
   return useQuery({
-    queryKey: ["leads", type, query, limit, offset],
+    queryKey: ["leads", type, query, limit, offset, sort, only_unmessaged],
     queryFn: async () => {
       // Helper to fetch and normalize
       const fetchLeads = async (endpoint: string, leadType: "email" | "social") => {
@@ -69,10 +73,12 @@ export const useLeads = ({
         if (query) params.append("query", query);
         params.append("limit", String(limit));
         params.append("offset", String(offset));
+        params.append("sort", sort);
+        params.append("only_unmessaged", String(only_unmessaged));
         const res = await fetchWithAuth(`${API_BASE_URL}/leads/${endpoint}?${params.toString()}`);
         return {
           ...res,
-          items: res.items.map((lead: any) => ({ ...lead, type: leadType })),
+          items: (res.items || []).map((lead: any) => ({ ...lead, type: leadType })),
         };
       };
 

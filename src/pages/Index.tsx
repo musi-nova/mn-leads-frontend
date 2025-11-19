@@ -14,6 +14,33 @@ import { useMessageLeads } from "@/hooks/useMessageLeads";
 import { Mail, Share2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+// Helper to fetch all unmessaged leads for random selection
+async function fetchAllUnmessagedLeads(type: 'all' | 'email' | 'social', token: string | null, apiBaseUrl: string, search: string) {
+  const endpoints = [];
+  if (type === 'all' || type === 'email') endpoints.push({ endpoint: 'email', leadType: 'email' });
+  if (type === 'all' || type === 'social') endpoints.push({ endpoint: 'social', leadType: 'social' });
+  const params = new URLSearchParams();
+  if (search) params.append('query', search);
+  params.append('limit', '5000'); // Arbitrary high limit
+  params.append('offset', '0');
+  const results = await Promise.all(
+    endpoints.map(async ({ endpoint, leadType }) => {
+      const res = await fetch(`${apiBaseUrl}/leads/${endpoint}?${params.toString()}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      if (type === 'email') {
+        console.log('Fetched email leads for unmessaged:', data);
+      }
+      return (data.items || []).filter((l: any) => l.date_sent === null || l.date_sent === undefined || l.date_sent === '').map((l: any) => ({ ...l, type: leadType }));
+    })
+  );
+  return results.flat();
+}
 
 const Index = () => {
   // PaginationControls component
@@ -58,9 +85,11 @@ const Index = () => {
     instagram_handle: '',
     spotify_handle: '',
   });
-  // Pagination and search state
+  // Pagination, search, sort, and filter state
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [sort, setSort] = useState<'asc' | 'desc'>('asc');
+  const [onlyUnmessaged, setOnlyUnmessaged] = useState(true);
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(search);
@@ -81,6 +110,13 @@ const Index = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<LeadType | "all">("all");
+  // Clear selection when tab changes
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeTab]);
+  const [randomLeads, setRandomLeads] = useState<any[] | null>(null);
+  const [randomLeadsTab, setRandomLeadsTab] = useState<'email' | 'social' | null>(null);
   const deleteLeadMutation = useDeleteLead();
   const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
@@ -97,7 +133,7 @@ const Index = () => {
       toast({ title: 'Error', description: err?.message || 'Failed to delete leads', variant: 'destructive' });
     }
   };
-  const [activeTab, setActiveTab] = useState<LeadType | "all">("all");
+  // (removed duplicate declaration of activeTab)
   const [openCreateModal, setOpenCreateModal] = useState(false);
   const [selectedRandomCount, setSelectedRandomCount] = useState(1);
   const [openUpdateModal, setOpenUpdateModal] = useState(false);
@@ -105,6 +141,15 @@ const Index = () => {
   const updateSocialLead = useUpdateSocialLead();
   const [updateForm, setUpdateForm] = useState<any>(null);
   const [updateLoading, setUpdateLoading] = useState(false);
+
+  // Clear randomLeads if tab changes
+  useEffect(() => {
+    if (randomLeadsTab && activeTab !== randomLeadsTab) {
+      setRandomLeads(null);
+      setRandomLeadsTab(null);
+    }
+  }, [activeTab]);
+
   // Open update modal and prefill form
   const handleOpenUpdateModal = () => {
     if (selectedIds.size !== 1) return;
@@ -147,13 +192,15 @@ const Index = () => {
     query: debouncedSearch,
     limit: pageSize,
     offset: page * pageSize,
+    sort,
+    only_unmessaged: onlyUnmessaged,
   });
   const leads = paginatedLeads?.items || [];
   const totalLeads = paginatedLeads?.total || 0;
-  const messageLeadsMutation = useMessageLeads();
   const autoDmSocialLeadsMutation = useAutoDmSocialLeads();
   const autoDmEmailLeadsMutation = useAutoDmEmailLeads();
   // No longer need filteredLeads, leads is already filtered by API
+  console.log('Active', activeTab);
   const handleMessageSelected = async () => {
     if (activeTab === "all") {
       toast({
@@ -163,27 +210,36 @@ const Index = () => {
       });
       return;
     }
+    // Use randomLeads if active for this tab, otherwise use paginated leads
+    let sourceLeads: any[] = leads;
+    if (randomLeads && randomLeadsTab === activeTab) {
+      sourceLeads = randomLeads;
+    } else {
+      sourceLeads = leads.filter(lead => lead.type === activeTab);
+    }
+    const selectedLeads = sourceLeads.filter(lead => selectedIds.has(lead.id));
+    if (selectedLeads.length === 0) {
+      console.log('No leads selected to message');
+      toast({
+        title: "Error",
+        description: "No leads selected to message.",
+        variant: "destructive",
+      });
+      return;
+    }
     toast({
       title: "Messaging leads...",
-      description: `Sending messages to ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}`,
+      description: `Sending messages to ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'}`,
     });
-
-    const selectedLeads = leads.filter(lead => selectedIds.has(lead.id));
-    const allSocial = selectedLeads.length > 0 && selectedLeads.every(lead => lead.type === "social");
-    const allEmail = selectedLeads.length > 0 && selectedLeads.every(lead => lead.type === "email");
     try {
-      if (allSocial) {
+      if (activeTab === 'social') {
         await autoDmSocialLeadsMutation.mutateAsync(selectedLeads.map(lead => lead.id));
-      } else if (allEmail) {
+      } else if (activeTab === 'email') {
         await autoDmEmailLeadsMutation.mutateAsync(selectedLeads.map(lead => lead.id));
-      } else {
-        await messageLeadsMutation.mutateAsync({
-          lead_ids: Array.from(selectedIds),
-        });
       }
       toast({
         title: "Messages sent!",
-        description: `Successfully sent messages to ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}`,
+        description: `Successfully sent messages to ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'}`,
       });
       setSelectedIds(new Set());
     } catch (error) {
@@ -389,7 +445,7 @@ const Index = () => {
             </TabsTrigger>
           </TabsList>
           <LeadsStats />
-          {/* Search and Pagination Controls */}
+          {/* Search, Sort, Filter, and Pagination Controls */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
             <div className="flex items-center gap-2">
               <Input
@@ -402,6 +458,30 @@ const Index = () => {
                 }}
                 className="w-64"
               />
+              <select
+                value={sort}
+                onChange={e => {
+                  setSort(e.target.value as 'asc' | 'desc');
+                  setPage(0);
+                }}
+                className="border rounded px-2 py-1"
+                style={{ minWidth: 90 }}
+              >
+                <option value="asc">Sort: Asc</option>
+                <option value="desc">Sort: Desc</option>
+              </select>
+              <label className="flex items-center gap-1 text-sm">
+                <input
+                  type="checkbox"
+                  checked={onlyUnmessaged}
+                  onChange={e => {
+                    setOnlyUnmessaged(e.target.checked);
+                    setPage(0);
+                  }}
+                  className="accent-primary"
+                />
+                Only Unmessaged
+              </label>
             </div>
             <div className="flex items-center gap-2">
               <span>Rows per page:</span>
@@ -433,36 +513,59 @@ const Index = () => {
             <Input
               type="number"
               min={1}
-              max={Math.min(300, leads.filter(l => !l.date_sent).length)}
+              max={300}
               value={selectedRandomCount}
               onChange={e => setSelectedRandomCount(
-                Math.max(1, Math.min(Number(e.target.value), Math.min(300, leads.filter(l => !l.date_sent).length)))
+                Math.max(1, Math.min(Number(e.target.value), 300))
               )}
               style={{ width: 80 }}
               placeholder="Amount"
             />
             <Button
               variant="outline"
-              onClick={() => {
-                let filtered = leads.filter(l => !l.date_sent);
-                if (activeTab === 'email') {
-                  filtered = filtered.filter(l => l.type === 'email');
-                } else if (activeTab === 'social') {
-                  filtered = filtered.filter(l => l.type === 'social' && l.instagram_handle && l.spotify_handle);
+              onClick={async () => {
+                if (activeTab === 'all') {
+                  toast({
+                    title: 'Error',
+                    description: 'Please select either the Email or Social tab to use random selection.',
+                    variant: 'destructive',
+                  });
+                  return;
                 }
+                const token = localStorage.getItem('jwt');
+                const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+                const allUnmessaged = await fetchAllUnmessagedLeads(activeTab, token, apiBaseUrl, debouncedSearch);
+                let filtered = allUnmessaged;
+                if (activeTab === 'social') {
+                  filtered = filtered.filter(l => l.instagram_handle && l.spotify_handle);
+                }
+                else {
+                  console.log('No extra filtering for email leads');
+                  filtered = filtered;
+                }
+                console.log('Filtered unmessaged leads:', filtered);
                 if (filtered.length === 0) return;
                 const count = Math.max(1, Math.min(selectedRandomCount, Math.min(300, filtered.length)));
-                const selected = new Set(
-                  filtered
-                    .sort(() => Math.random() - 0.5)
-                    .slice(0, count)
-                    .map(l => l.id)
-                );
-                setSelectedIds(selected as Set<string>);
+                const selectedLeads = filtered
+                  .sort(() => Math.random() - 0.5)
+                  .slice(0, count);
+                console.log('Active tab:', activeTab);
+                console.log('Selected random leads:', selectedLeads);
+                setRandomLeads(selectedLeads);
+                setRandomLeadsTab(activeTab === 'email' ? 'email' : 'social');
+                setSelectedIds(new Set(selectedLeads.map(l => l.id)) as Set<string>);
               }}
             >
               Select Random Unmessaged
             </Button>
+            {randomLeads && (
+              <Button
+                variant="ghost"
+                onClick={() => { setRandomLeads(null); setRandomLeadsTab(null); }}
+              >
+                Show All
+              </Button>
+            )}
           </div>
           {/* Update Lead Modal */}
           <Dialog open={openUpdateModal} onOpenChange={setOpenUpdateModal}>
@@ -558,29 +661,33 @@ const Index = () => {
           </TabsContent>
           <TabsContent value="email" className="mt-0">
             <LeadsTable
-              leads={leads}
+              leads={activeTab === 'email' && randomLeadsTab === 'email' && randomLeads ? randomLeads : leads}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
             />
-            <PaginationControls
-              page={page}
-              pageSize={pageSize}
-              total={totalLeads}
-              onPageChange={setPage}
-            />
+            {(!randomLeads || randomLeadsTab !== 'email') && (
+              <PaginationControls
+                page={page}
+                pageSize={pageSize}
+                total={totalLeads}
+                onPageChange={setPage}
+              />
+            )}
           </TabsContent>
           <TabsContent value="social" className="mt-0">
             <LeadsTable
-              leads={leads}
+              leads={activeTab === 'social' && randomLeadsTab === 'social' && randomLeads ? randomLeads : leads}
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
             />
-            <PaginationControls
-              page={page}
-              pageSize={pageSize}
-              total={totalLeads}
-              onPageChange={setPage}
-            />
+            {(!randomLeads || randomLeadsTab !== 'social') && (
+              <PaginationControls
+                page={page}
+                pageSize={pageSize}
+                total={totalLeads}
+                onPageChange={setPage}
+              />
+            )}
           </TabsContent>
         </Tabs>
       </div>
