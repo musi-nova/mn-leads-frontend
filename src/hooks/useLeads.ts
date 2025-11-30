@@ -1,8 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Lead, EmailLead, SocialLead } from "@/types/lead";
 
+import { SesAnalytics } from "@/types/ses-analytics";
+
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
+
 
 const fetchWithAuth = async (url: string, options?: RequestInit) => {
   const token = localStorage.getItem('jwt');
@@ -202,6 +205,15 @@ export const useAutoDmEmailLeads = () => {
         method: "POST",
         body: JSON.stringify(leadIds),
       });
+    },
+  });
+};
+
+export const useSesAnalytics = () => {
+  return useQuery({
+    queryKey: ["ses-analytics"],
+    queryFn: async (): Promise<SesAnalytics> => {
+      return fetchWithAuth(`${API_BASE_URL}/leads/email/ses/analytics`);
     },
   });
 };

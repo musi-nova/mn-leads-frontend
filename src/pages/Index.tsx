@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LeadsTable } from "@/components/leads/LeadsTable";
 import { LeadsStats } from "@/components/leads/LeadsStats";
 import { LeadActions } from "@/components/leads/LeadActions";
+import { EmailAnalytics } from "@/components/leads/EmailAnalytics";
 import { LeadType } from "@/types/lead";
 import { useLeads, useCreateEmailLead, useCreateSocialLead, useDeleteLead, useUpdateEmailLead, useUpdateSocialLead, useAutoDmSocialLeads, useAutoDmEmailLeads } from "@/hooks/useLeads";
 import { useMessageLeads } from "@/hooks/useMessageLeads";
@@ -110,7 +111,7 @@ const Index = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<LeadType | "all">("all");
+  const [activeTab, setActiveTab] = useState<LeadType | "all" | "analytics">("all");
   // Clear selection when tab changes
   useEffect(() => {
     setSelectedIds(new Set());
@@ -188,7 +189,7 @@ const Index = () => {
     isLoading,
     error
   } = useLeads({
-    type: activeTab,
+    type: ["all", "email", "social"].includes(activeTab) ? (activeTab as "all" | "email" | "social") : "all",
     query: debouncedSearch,
     limit: pageSize,
     offset: page * pageSize,
@@ -430,7 +431,7 @@ const Index = () => {
 
       <div className="container mx-auto px-6 py-8">
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as LeadType | "all")} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-3 mb-6">
+          <TabsList className="grid w-full max-w-xl grid-cols-4 mb-6">
             <TabsTrigger value="all" className="gap-2">
               <Mail className="h-4 w-4" /> / <Share2 className="h-4 w-4" />
               All
@@ -442,6 +443,10 @@ const Index = () => {
             <TabsTrigger value="social" className="gap-2">
               <Share2 className="h-4 w-4" />
               Social
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="gap-2">
+              <Mail className="h-4 w-4" />
+              AWS SES Analytics
             </TabsTrigger>
           </TabsList>
           <LeadsStats />
@@ -534,7 +539,11 @@ const Index = () => {
                 }
                 const token = localStorage.getItem('jwt');
                 const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-                const allUnmessaged = await fetchAllUnmessagedLeads(activeTab, token, apiBaseUrl, debouncedSearch);
+                const allUnmessaged = await fetchAllUnmessagedLeads([
+                  "all",
+                  "email",
+                  "social"
+                ].includes(activeTab) ? (activeTab as "all" | "email" | "social") : "all", token, apiBaseUrl, debouncedSearch);
                 let filtered = allUnmessaged;
                 if (activeTab === 'social') {
                   filtered = filtered.filter(l => l.instagram_handle && l.spotify_handle);
@@ -688,6 +697,9 @@ const Index = () => {
                 onPageChange={setPage}
               />
             )}
+          </TabsContent>
+          <TabsContent value="analytics" className="mt-0">
+            <EmailAnalytics />
           </TabsContent>
         </Tabs>
       </div>
